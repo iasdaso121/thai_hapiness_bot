@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: marketplace_db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - marketplace_network
+
+  # Node.js
+  server:
+    build: ./server
+    container_name: marketplace_server
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      PORT: ${PORT}
+      SECRET_KEY: ${SECRET_KEY}
+      ADMIN_LOGIN: ${ADMIN_LOGIN}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    ports:
+      - "${PORT}:${PORT}"
+    depends_on:
+      - postgres
+    volumes:
+      - ./server/static:/app/static
+    networks:
+      - marketplace_network
+    restart: unless-stopped
+
+  # React
+  client:
+    build: ./client
+    container_name: marketplace_client
+    # environment:
+    #   REACT_APP_API_URL: ${REACT_APP_API_URL}
+    environment:
+      SERVER_PORT: ${PORT}
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    networks:
+      - marketplace_network
+    restart: unless-stopped
+
+  # Python
+  bot:
+    build: ./bot
+    container_name: marketplace_bot
+    environment:
+      NODE_API_URL: http://server:${PORT}/api
+      BOT_TOKEN: ${BOT_TOKEN}
+      LOG_LEVEL: INFO
+    depends_on:
+      - server
+    networks:
+      - marketplace_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  marketplace_network:
+    driver: bridge

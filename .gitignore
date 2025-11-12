@@ -1,0 +1,114 @@
+# === OS / Editor ===
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+*.tmp
+*.swp
+*.swo
+
+# === Environment ===
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.cer
+secret_*.json
+config.local.*
+
+# === Node.js (client + server) ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+build/
+.cache/
+.next/
+out/
+coverage/
+# Ignore lockfiles (remove these lines if you want to keep them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# === Python (bot) ===
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+develop-eggs/
+dist/
+downloads/
+pip-wheel-metadata/
+.wheels/
+*.manifest
+*.spec
+# Virtualenvs
+.env/
+.venv/
+env/
+venv/
+ENV/
+# pytest / coverage
+.cache/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+# Jupyter
+.ipynb_checkpoints
+
+# === Docker ===
+*.pid
+*.seed
+*.pid.lock
+docker-compose.override.yml
+*.tar
+
+# === Logs / Temp ===
+logs/
+*.log
+tmp/
+temp/
+__pypackages__/
+local_settings.py
+
+# === Frontend build artifacts ===
+client/.next/
+client/out/
+client/build/
+client/.cache/
+
+# === Node backend artifacts ===
+server/dist/
+server/build/
+
+# === Python bot artifacts ===
+bot/__pycache__/
+bot/*.pyc
+bot/.venv/
+bot/env/
+bot/venv/
+bot/*.log
+
+# === Ignore lock files in subprojects ===
+client/package-lock.json
+server/package-lock.json
+
+# === Misc ===
+*.db
+*.sqlite3
+*.pid
+*.seed
+*.pid.lock
