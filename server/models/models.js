@@ -61,13 +61,37 @@ const Client = sequelize.define('client', {
     firstName: {type: DataTypes.STRING},
     lastName: {type: DataTypes.STRING},
     purchasedPositions: {
-        type: DataTypes.JSON, 
+        type: DataTypes.JSON,
         defaultValue: []
     }
 })
 
+const Payment = sequelize.define('payment', {
+    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
+    telegramId: {type: DataTypes.BIGINT, allowNull: false},
+    clientId: {type: DataTypes.INTEGER, allowNull: true},
+    positionId: {type: DataTypes.INTEGER, allowNull: false},
+    providerInvoiceId: {type: DataTypes.STRING, allowNull: false},
+    status: {type: DataTypes.STRING, allowNull: false},
+    payUrl: {type: DataTypes.STRING},
+    asset: {type: DataTypes.STRING},
+    amount: {type: DataTypes.STRING},
+    description: {type: DataTypes.TEXT},
+    payload: {type: DataTypes.STRING},
+    positionSnapshot: {type: DataTypes.JSON, allowNull: false},
+    purchaseCreated: {type: DataTypes.BOOLEAN, defaultValue: false},
+    paidAt: {type: DataTypes.DATE, allowNull: true},
+    expiresAt: {type: DataTypes.DATE, allowNull: true},
+})
+
 Client.belongsToMany(Position, { through: 'ClientPositions' })
 Position.belongsToMany(Client, { through: 'ClientPositions' })
+
+Client.hasMany(Payment, { foreignKey: 'clientId', as: 'payments' })
+Payment.belongsTo(Client, { foreignKey: 'clientId', as: 'client' })
+
+Position.hasMany(Payment, { foreignKey: 'positionId', as: 'payments' })
+Payment.belongsTo(Position, { foreignKey: 'positionId', as: 'position' })
 
 Category.hasMany(Product, { foreignKey: 'categoryId', as: 'products' })
 Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'category' })
@@ -116,6 +140,6 @@ const createDefaultAdmin = async () => {
 }
 
 module.exports = {
-    User, BotContent, Category, Product, Position, City, District, Client,
-    createDefaultAdmin 
+    User, BotContent, Category, Product, Position, City, District, Client, Payment,
+    createDefaultAdmin
 }

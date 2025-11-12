@@ -175,6 +175,38 @@ class BotAPI:
             logger.error(f"Error getting client purchases: {e}")
             return None
 
+    async def create_crypto_invoice(self, telegram_id, position_id):
+        """Создать крипто-счет для оплаты"""
+        try:
+            data = {
+                'telegramId': telegram_id,
+                'positionId': position_id
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f'{self.base_url}/payments/crypto/invoice', json=data) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    error_text = await resp.text()
+                    logger.error(f"Failed to create crypto invoice ({resp.status}): {error_text}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error creating crypto invoice: {e}")
+            return None
+
+    async def get_payment_details(self, payment_id):
+        """Получить информацию о платеже"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{self.base_url}/payments/{payment_id}') as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    error_text = await resp.text()
+                    logger.error(f"Failed to get payment details ({resp.status}): {error_text}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error getting payment details: {e}")
+            return None
+
 api = BotAPI(NODE_API_URL)
 
 MAIN_MENU = ReplyKeyboardMarkup([
@@ -325,26 +357,30 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
             product_name = purchase.get('productName', 'Неизвестный товар')
             position_name = purchase.get('positionName', 'Неизвестная позиция')
             price = purchase.get('price', 0)
-            
+
             message_text += (
                 f" 🌲 <b>{position_name}</b>\n"
                 f"  ({product_name})\n"
                 f"  💰 {price}฿\n"
             )
-            
-            position_id = purchase.get('positionId')
-            if position_id:
-                position_details = await api.get_position_by_id(position_id)
-                if position_details:
-                    city = position_details.get('city', {})
-                    district = position_details.get('district', {})
-                    
-                    if city:
-                        message_text += f"  🏙️ {city.get('name', '')}"
-                        if district:
-                            message_text += f", {district.get('name', '')}"
-                        message_text += "\n"
-            
+
+            location_text = purchase.get('location')
+            if location_text:
+                message_text += f"  📍 {location_text}\n"
+            else:
+                position_id = purchase.get('positionId')
+                if position_id:
+                    position_details = await api.get_position_by_id(position_id)
+                    if position_details:
+                        city = position_details.get('city', {})
+                        district = position_details.get('district', {})
+
+                        if city:
+                            message_text += f"  🏙️ {city.get('name', '')}"
+                            if district:
+                                message_text += f", {district.get('name', '')}"
+                            message_text += "\n"
+
             message_text += "\n"
             
             total_orders += 1
@@ -369,12 +405,17 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
             position_name = purchase.get('positionName', 'Неизвестная позиция')
             price = purchase.get('price', 0)
             date = purchase.get('purchaseDate', '')[:10]
-            
+
             message_text += (
                 f"{i}. <b>{product_name}</b>\n"
-                f"   📍 {position_name} | 💰 {price}฿ | 📅 {date}\n\n"
+                f"   📍 {position_name} | 💰 {price}฿ | 📅 {date}\n"
             )
-        
+
+            if purchase.get('location'):
+                message_text += f"   🔑 {purchase['location']}\n"
+
+            message_text += "\n"
+
         message_text += f"<i>Всего заказов: {len(purchases)}</i>"
     
     await update.message.reply_text(
@@ -639,7 +680,7 @@ async def show_position_details(update: Update, context: ContextTypes.DEFAULT_TY
     if district:
         message_text += f"\n📍 Район: {district.get('name')}"
     
-    message_text += f"\n🏢 Место: {position['location']}\n"
+    message_text += "\n🔒 Локация будет доступна после оплаты.\n"
     # message_text += f"\n\n🛍️ Товар: {product.get('name', 'Не указан')}"
     
     keyboard = [
@@ -892,7 +933,7 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
     """Обработчик покупки позиции"""
     query = update.callback_query
     await query.answer()
-    
+
     user = query.from_user
     position = await api.get_position_by_id(position_id)
     
@@ -917,34 +958,131 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
         )
         return
     
-    # Добавляем покупку
-    purchase_result = await api.add_purchase(
-        user.id,
-        position_id,
-        position['name'],
-        position['price'],
-        position.get('product', {}).get('name')
-    )
-    
-    if purchase_result and purchase_result.get('success'):
+    invoice_result = await api.create_crypto_invoice(user.id, position_id)
+
+    if not invoice_result or not invoice_result.get('success'):
         await query.edit_message_text(
-            f"✅ <b>Заказ оформлен!</b>\n\n"
-            f"Продукт: {position.get('product', {}).get('name', 'Неизвестно')}\n"
-            f"Позиция: {position['name']}\n"
-            f"Цена: {position['price']}฿\n\n",
-            parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Вернуться в каталог", callback_data="back_to_categories")],
-            ])
-        )
-    else:
-        await query.edit_message_text(
-            "❌ <b>Ошибка при оформлении заказа</b>\n\n",
+            "❌ <b>Ошибка:</b> Не удалось создать счёт для оплаты.",
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 Назад", callback_data=f"pos_{position_id}")]
             ])
         )
+        return
+
+    payment_info = invoice_result.get('payment', {})
+    invoice_data = invoice_result.get('invoice', {})
+
+    payment_id = payment_info.get('id')
+    pay_url = payment_info.get('payUrl') or invoice_data.get('pay_url')
+    amount = payment_info.get('amount') or invoice_data.get('amount')
+    asset = payment_info.get('asset') or invoice_data.get('asset', '')
+    expires_at = payment_info.get('expiresAt') or invoice_data.get('expiration_date')
+
+    if not payment_id or not pay_url:
+        await query.edit_message_text(
+            "❌ <b>Ошибка:</b> Некорректный ответ платежной системы.",
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 Назад", callback_data=f"pos_{position_id}")]
+            ])
+        )
+        return
+
+    product_name = position.get('product', {}).get('name', 'Неизвестно')
+    amount_text = f"{amount} {asset}" if amount else f"{position['price']}฿"
+
+    message_text = (
+        "💳 <b>Оплата заказа</b>\n\n"
+        f"🛍️ Товар: {product_name}\n"
+        f"📦 Позиция: {position['name']}\n"
+        f"💰 К оплате: {amount_text}\n"
+    )
+
+    if expires_at:
+        message_text += f"⏳ Счёт действует до: {expires_at}\n"
+
+    message_text += (
+        "\nПерейдите по ссылке «Оплатить», чтобы завершить покупку.\n"
+        "После успешной оплаты нажмите «Проверить оплату», чтобы получить локацию."
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("💳 Оплатить", url=pay_url)],
+        [InlineKeyboardButton("✅ Проверить оплату", callback_data=f"check_payment_{payment_id}")],
+        [InlineKeyboardButton("🔙 Назад", callback_data=f"pos_{position_id}")]
+    ]
+
+    await query.edit_message_text(
+        message_text,
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def handle_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE, payment_id):
+    """Проверка статуса оплаты"""
+    query = update.callback_query
+
+    payment_response = await api.get_payment_details(payment_id)
+
+    if not payment_response or not payment_response.get('success'):
+        await query.answer("Не удалось получить информацию о платеже", show_alert=True)
+        return
+
+    payment = payment_response.get('payment', {})
+    status = payment.get('status')
+    position_info = payment.get('position', {})
+
+    if status == 'paid':
+        location = position_info.get('location') or 'Локация недоступна'
+        product_name = position_info.get('productName', 'Неизвестно')
+        position_name = position_info.get('name', 'Позиция')
+        amount = payment.get('amount')
+        asset = payment.get('asset', '')
+
+        message_text = (
+            "✅ <b>Оплата подтверждена!</b>\n\n"
+            f"🛍️ Товар: {product_name}\n"
+            f"📦 Позиция: {position_name}\n"
+        )
+
+        if amount:
+            message_text += f"💰 Сумма: {amount} {asset}\n"
+
+        message_text += f"\n📍 <b>Локация:</b>\n{location}\n\n"
+        message_text += "Данные также доступны в разделе «Заказы»."
+
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏪 Вернуться в каталог", callback_data="back_to_categories")],
+            [InlineKeyboardButton("📦 Мои заказы", callback_data="back_to_menu")]
+        ])
+
+        await query.edit_message_text(
+            message_text,
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
+        return
+
+    if status == 'expired':
+        position_id = position_info.get('id') or payment.get('positionId')
+        keyboard = []
+        if position_id:
+            keyboard.append([InlineKeyboardButton("🔁 Создать новый счёт", callback_data=f"buy_{position_id}")])
+        keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_categories")])
+
+        await query.edit_message_text(
+            "⏰ <b>Срок оплаты истёк.</b>\n\nПопробуйте оформить новый заказ.",
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    if status == 'active':
+        await query.answer("Счёт ещё не оплачен. Попробуйте позже.", show_alert=True)
+        return
+
+    await query.answer("Статус платежа неизвестен.", show_alert=True)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик inline кнопок"""
@@ -994,6 +1132,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML',
             reply_markup=MAIN_MENU
         )
+    elif data.startswith("check_payment_"):
+        payment_id = data.split("check_payment_")[1]
+        await handle_payment_status(update, context, payment_id)
     elif data.startswith("buy_"):
         position_id = data.split("_")[1]
         await handle_purchase(update, context, position_id)
