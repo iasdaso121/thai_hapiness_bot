@@ -9,6 +9,7 @@ const productRouter = require('./productRouter')
 const positionRouter = require('./positionRouter')
 const cityRouter = require('./cityRouter')
 const districtRouter = require('./districtRouter')
+const paymentRouter = require('./paymentRouter')
 
 router.use('/user', userRouter)
 router.use('/bot', botRouter)
@@ -18,6 +19,7 @@ router.use('/product', productRouter)
 router.use('/position', positionRouter)
 router.use('/city', cityRouter)
 router.use('/district', districtRouter)
+router.use('/payments', paymentRouter)
 
 module.exports = router
 

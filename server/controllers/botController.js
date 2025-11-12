@@ -203,16 +203,31 @@ class BotController {
     async addPurchase(req, res, next) {
         try {
             const { telegramId } = req.params
-            const { positionId, positionName, price, productName } = req.body
+            const { positionId, positionName, price, productName, paymentId, providerInvoiceId, location } = req.body
 
             let client = await Client.findOne({ where: { telegramId } })
             if (!client) {
                 return next(ApiError.notFound('Client not found'))
             }
 
-            const position = await Position.findByPk(positionId)
+            const position = await Position.findByPk(positionId, {
+                include: [{ model: Product, as: 'product' }]
+            })
             if (!position) {
                 return next(ApiError.notFound('Position not found'))
+            }
+
+            const currentPurchases = client.purchasedPositions || []
+
+            if (paymentId) {
+                const existingPurchase = currentPurchases.find(p => p.paymentId === paymentId)
+                if (existingPurchase) {
+                    return res.json({
+                        success: true,
+                        purchase: existingPurchase,
+                        totalPurchases: currentPurchases.length
+                    })
+                }
             }
 
             // объект покупки
@@ -221,10 +236,12 @@ class BotController {
                 positionName: positionName || position.name,
                 price: price || position.price,
                 productName: productName || (position.product ? position.product.name : 'Unknown'),
-                purchaseDate: new Date().toISOString()
+                purchaseDate: new Date().toISOString(),
+                paymentId: paymentId || null,
+                providerInvoiceId: providerInvoiceId || null,
+                location: location || position.location,
             }
 
-            const currentPurchases = client.purchasedPositions || []
             const updatedPurchases = [...currentPurchases, purchase]
 
             await client.update({
