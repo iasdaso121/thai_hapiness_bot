@@ -13,6 +13,12 @@ router.get('/products-by-category/:categoryId', botController.getProductsByCateg
 router.post('/clients/:telegramId/purchase', botController.addPurchase)
 router.get('/clients/:telegramId/purchases', botController.getClientPurchases)
 router.post('/clients/:telegramId', botController.getOrCreateClient)
+router.get('/clients/:telegramId/balance', botController.getClientBalance)
+router.post('/clients/:telegramId/balance/adjust', botController.adjustClientBalance)
+router.post(
+    '/clients/:telegramId/balance/test-topup',
+    botController.testTopUpBalance.bind(botController)
+)
 
 // Защищенные routes (админка)
 router.get('/content', checkRole('ADMIN'), botController.getAllContent)

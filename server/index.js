@@ -23,7 +23,7 @@ app.use(errorHandler)
 const start = async () => {
     try {
         await sequelize.authenticate()
-        await sequelize.sync()
+        await sequelize.sync({ alter: true })
         await createDefaultAdmin()
         app.listen(PORT, () => console.log(`Server started on port ${PORT}`))
     } catch (e) {

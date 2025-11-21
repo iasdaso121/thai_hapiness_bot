@@ -39,7 +39,7 @@ const PositionCard = observer(({ position }) => {
                 </div>
 
                 <div className="mb-2">
-                    <h5 className="text-warning mb-0"><b>{position.price} ???</b></h5>
+                    <h5 className="text-warning mb-0"><b>{position.price} $</b></h5>
                 </div>
 
                 <div className="mb-3">

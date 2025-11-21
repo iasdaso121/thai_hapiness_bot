@@ -146,7 +146,7 @@ const CreatePositionModal = observer(({ show, onHide, onPositionCreated, product
                         </Col>
                         <Col md={6}>
                             <Form.Group className="mb-3">
-                                <Form.Label>Цена (???) *</Form.Label>
+                                <Form.Label>Цена ($) *</Form.Label>
                                 <Form.Control
                                     type="number"
                                     value={price}

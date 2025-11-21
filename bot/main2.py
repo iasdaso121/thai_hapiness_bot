@@ -215,6 +215,32 @@ class BotAPI:
             logger.error(f"Error getting client purchases: {e}")
             return None
 
+    async def get_client_balance(self, telegram_id):
+        """Получить баланс клиента"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{self.base_url}/bot/clients/{telegram_id}/balance') as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return None
+        except Exception as e:
+            logger.error(f"Error getting client balance: {e}")
+            return None
+
+    async def adjust_balance(self, telegram_id, amount):
+        """Изменить баланс клиента"""
+        try:
+            payload = {'amount': amount}
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f'{self.base_url}/bot/clients/{telegram_id}/balance/adjust', json=payload) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    logger.error(f"Adjust balance failed with status {resp.status}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error adjusting client balance: {e}")
+            return None
+
 api = BotAPI(NODE_API_URL)
 
 
@@ -281,8 +307,32 @@ def get_user_wallet(user_id):
     return user_wallets[user_id]
 
 
+def get_user_state(user_id):
+    """Получить состояние пользователя или инициализировать дефолтное."""
+    return user_states.setdefault(user_id, {
+        'city_id': None,
+        'district_id': None,
+        'current_category': None,
+        'current_product': None,
+        'current_page': 1,
+        'awaiting_topup': None
+    })
+
+
 def format_amount(value):
     return f"{float(value):.2f}"
+
+
+async def sync_wallet_balance(user_id):
+    """Синхронизировать локальный кошелек с сервером"""
+    wallet = get_user_wallet(user_id)
+    try:
+        balance_data = await api.get_client_balance(user_id)
+        if balance_data and 'balance' in balance_data:
+            wallet['balance'] = float(balance_data['balance'])
+    except Exception as e:
+        logger.error(f"Failed to sync balance for {user_id}: {e}")
+    return wallet
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
@@ -290,14 +340,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {user.id} started the bot")
 
     get_user_wallet(user.id)
+    await sync_wallet_balance(user.id)
     
-    user_states[user.id] = {
-        'city_id': None,
-        'district_id': None,
-        'current_category': None,
-        'current_product': None,
-        'current_page': 1
-    }
+    get_user_state(user.id)
     
     welcome_content = await api.get_bot_content('welcome')
     
@@ -325,7 +370,38 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нижнего меню"""
     text = update.message.text
     user_id = update.effective_user.id
-    user_state = user_states.get(user_id, {})
+    user_state = get_user_state(user_id)
+
+    # Ожидание ввода суммы для пополнения
+    awaiting_topup = user_state.get('awaiting_topup')
+    if awaiting_topup:
+        normalized_text = text.replace(",", ".").strip()
+        if normalized_text.lower() in ("отмена", "cancel", "назад"):
+            user_state['awaiting_topup'] = None
+            await update.message.reply_text(
+                "Пополнение отменено.",
+                reply_markup=MAIN_MENU
+            )
+            return
+        try:
+            amount = float(normalized_text)
+        except ValueError:
+            await update.message.reply_text(
+                "Введите сумму числом, например 12.5",
+                reply_markup=MAIN_MENU
+            )
+            return
+
+        if amount <= 0:
+            await update.message.reply_text(
+                "Сумма должна быть больше нуля. Повторите ввод или отправьте «Отмена».",
+                reply_markup=MAIN_MENU
+            )
+            return
+
+        user_state['awaiting_topup'] = None
+        await create_topup_invoice(update, awaiting_topup.get('asset', CRYPTO_PAYMENT_ASSET), amount)
+        return
     
     if text == "Каталог":
         await show_categories(update, context)
@@ -367,7 +443,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_state = user_states.get(user_id, {})
     location_info = await get_location_button_text(user_state)
 
-    wallet = get_user_wallet(user_id)
+    wallet = await sync_wallet_balance(user_id)
 
     profile_text = (
         f"👤 <b>Профиль</b>\n\n"
@@ -388,12 +464,12 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_balance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать баланс и варианты пополнения."""
     user = update.effective_user if update.message else update.callback_query.from_user
-    wallet = get_user_wallet(user.id)
+    wallet = await sync_wallet_balance(user.id)
 
     text = (
         f"💳 <b>Ваш баланс</b>\n\n"
         f"Доступно: <b>{format_amount(wallet['balance'])} {CRYPTO_PAYMENT_ASSET}</b>\n"
-        f"Выберите сумму пополнения или проверьте оплату активных инвойсов."
+        f"Выберите сумму пополнения, укажите свою или проверьте оплату активных инвойсов."
     )
 
     buttons = [
@@ -401,7 +477,10 @@ async def show_balance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton(f"Пополнить 10 {CRYPTO_PAYMENT_ASSET}", callback_data=f"topup_{CRYPTO_PAYMENT_ASSET}_10"),
             InlineKeyboardButton(f"Пополнить 25 {CRYPTO_PAYMENT_ASSET}", callback_data=f"topup_{CRYPTO_PAYMENT_ASSET}_25"),
         ],
-        [InlineKeyboardButton(f"Пополнить 50 {CRYPTO_PAYMENT_ASSET}", callback_data=f"topup_{CRYPTO_PAYMENT_ASSET}_50")]
+        [
+            InlineKeyboardButton(f"Пополнить 50 {CRYPTO_PAYMENT_ASSET}", callback_data=f"topup_{CRYPTO_PAYMENT_ASSET}_50"),
+            InlineKeyboardButton("Другая сумма", callback_data=f"topup_custom_{CRYPTO_PAYMENT_ASSET}")
+        ]
     ]
 
     pending_buttons = []
@@ -435,7 +514,7 @@ async def create_topup_invoice(update: Update, asset: str, amount: float):
             await update.callback_query.edit_message_text(message, parse_mode='HTML', reply_markup=markup)
         return
 
-    wallet = get_user_wallet(user.id)
+    wallet = await sync_wallet_balance(user.id)
     wallet['invoices'][invoice['invoice_id']] = {
         'amount': amount,
         'asset': asset,
@@ -457,6 +536,24 @@ async def create_topup_invoice(update: Update, asset: str, amount: float):
         await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(buttons))
 
 
+async def prompt_custom_topup(update: Update, asset: str):
+    """Запросить у пользователя произвольную сумму пополнения."""
+    user = update.effective_user if update.message else update.callback_query.from_user
+    user_state = get_user_state(user.id)
+    user_state['awaiting_topup'] = {'asset': asset}
+
+    message = (
+        f"Введите сумму пополнения в {asset}.\n"
+        f"Пример: 12.5\n"
+        f"Для отмены отправьте «Отмена»."
+    )
+
+    if update.message:
+        await update.message.reply_text(message, reply_markup=MAIN_MENU)
+    else:
+        await update.callback_query.message.reply_text(message, reply_markup=MAIN_MENU)
+
+
 async def check_invoice_status(update: Update, invoice_id: str):
     user = update.effective_user if update.message else update.callback_query.from_user
     invoice = await crypto_bot.get_invoice(invoice_id)
@@ -469,12 +566,18 @@ async def check_invoice_status(update: Update, invoice_id: str):
             await update.callback_query.edit_message_text(message, reply_markup=MAIN_MENU)
         return
 
-    wallet = get_user_wallet(user.id)
+    wallet = await sync_wallet_balance(user.id)
     stored_invoice = wallet['invoices'].get(int(invoice_id))
 
     if invoice.get('status') == 'paid' and stored_invoice and stored_invoice.get('status') != 'paid':
         wallet['balance'] += float(stored_invoice.get('amount', 0))
         stored_invoice['status'] = 'paid'
+
+        balance_response = await api.adjust_balance(user.id, float(stored_invoice.get('amount', 0)))
+        if not balance_response:
+            logger.error(f"Failed to persist balance top-up for {user.id}")
+        else:
+            wallet['balance'] = float(balance_response.get('balance', wallet['balance']))
 
         message = (
             f"✅ Оплата подтверждена!\n"
@@ -545,7 +648,7 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_text += (
                 f" 🌲 <b>{position_name}</b>\n"
                 f"  ({product_name})\n"
-                f"  💰 {price}฿\n"
+                f"  💰 {price} $\n"
             )
             
             position_id = purchase.get('positionId')
@@ -572,7 +675,7 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # message_text += (
     #     f"<b>Итого:</b>\n"
     #     f"📊 Всего заказов: <b>{total_orders}</b>\n"
-    #     f"💰 Общая сумма: <b>{total_amount}฿</b>"
+    #     f"💰 Общая сумма: <b>{total_amount} $</b>"
     # )
     
     if len(purchases) > 20:
@@ -588,7 +691,7 @@ async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             message_text += (
                 f"{i}. <b>{product_name}</b>\n"
-                f"   📍 {position_name} | 💰 {price}฿ | 📅 {date}\n\n"
+                f"   📍 {position_name} | 💰 {price} $ | 📅 {date}\n\n"
             )
         
         message_text += f"<i>Всего заказов: {len(purchases)}</i>"
@@ -812,7 +915,7 @@ async def show_product_details(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard = []
     for position in positions:
         keyboard.append([InlineKeyboardButton(
-            f"💰 {position['price']}฿ - {position['name']} - {position['location']}", 
+            f"💰 {position['price']} $ - {position['name']} - {position['location']}", 
             callback_data=f"pos_{position['id']}"
         )])
     
@@ -849,7 +952,7 @@ async def show_position_details(update: Update, context: ContextTypes.DEFAULT_TY
     
     message_text = (
         f"<b>📍 {position['name']}</b>\n\n"
-        f"💰 <b>Цена: {position['price']}฿</b>\n"
+        f"💰 <b>Цена: {position['price']} $</b>\n"
         f"📦 Упаковка: {position['type']}\n"
         f"🏙️ Город: {city.get('name', 'Не указан')}"   
     )
@@ -1135,7 +1238,7 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
         )
         return
 
-    wallet = get_user_wallet(user.id)
+    wallet = await sync_wallet_balance(user.id)
     price = float(position['price'])
 
     if wallet['balance'] < price:
@@ -1143,9 +1246,9 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
         await query.edit_message_text(
             (
                 "❌ <b>Недостаточно средств</b>\n\n"
-                f"Стоимость позиции: <b>{format_amount(price)}</b>\n"
-                f"Доступно: <b>{format_amount(wallet['balance'])}</b>\n"
-                f"Не хватает: <b>{format_amount(missing)}</b>"
+                f"Стоимость позиции: <b>{format_amount(price)} $</b>\n"
+                f"Доступно: <b>{format_amount(wallet['balance'])} $</b>\n"
+                f"Не хватает: <b>{format_amount(missing)} $</b>"
             ),
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([
@@ -1154,8 +1257,6 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
             ])
         )
         return
-
-    wallet['balance'] -= price
 
     # Добавляем покупку
     purchase_result = await api.add_purchase(
@@ -1167,18 +1268,18 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
     )
 
     if purchase_result and purchase_result.get('success'):
+        await sync_wallet_balance(user.id)
         await query.edit_message_text(
             f"✅ <b>Заказ оформлен!</b>\n\n"
             f"Продукт: {position.get('product', {}).get('name', 'Неизвестно')}\n"
             f"Позиция: {position['name']}\n"
-            f"Цена: {position['price']}฿\n\n",
+            f"Цена: {position['price']} $\n\n",
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("Вернуться в каталог", callback_data="back_to_categories")],
             ])
         )
     else:
-        wallet['balance'] += price
         await query.edit_message_text(
             "❌ <b>Ошибка при оформлении заказа</b>\n\n",
             parse_mode='HTML',
@@ -1206,6 +1307,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("pos_"):
         position_id = data.split("_")[1]
         await show_position_details(update, context, position_id)
+    elif data.startswith("topup_custom_"):
+        asset = data.split("_")[2]
+        await prompt_custom_topup(update, asset)
     elif data.startswith("topup_"):
         _, asset, amount = data.split("_")
         await create_topup_invoice(update, asset, float(amount))

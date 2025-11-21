@@ -60,6 +60,7 @@ const Client = sequelize.define('client', {
     username: {type: DataTypes.STRING},
     firstName: {type: DataTypes.STRING},
     lastName: {type: DataTypes.STRING},
+    balance: {type: DataTypes.FLOAT, allowNull: false, defaultValue: 0},
     purchasedPositions: {
         type: DataTypes.JSON, 
         defaultValue: []

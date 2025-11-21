@@ -210,16 +210,29 @@ class BotController {
                 return next(ApiError.notFound('Client not found'))
             }
 
-            const position = await Position.findByPk(positionId)
+            const position = await Position.findByPk(positionId, {
+                include: [{ model: Product, as: 'product' }]
+            })
             if (!position) {
                 return next(ApiError.notFound('Position not found'))
+            }
+
+            const purchasePrice = parseFloat(price || position.price)
+            const currentBalance = parseFloat(client.balance || 0)
+
+            if (isNaN(purchasePrice) || purchasePrice <= 0) {
+                return next(ApiError.badRequest('Invalid position price'))
+            }
+
+            if (currentBalance < purchasePrice) {
+                return next(ApiError.badRequest('Insufficient balance'))
             }
 
             // объект покупки
             const purchase = {
                 positionId: positionId,
                 positionName: positionName || position.name,
-                price: price || position.price,
+                price: purchasePrice,
                 productName: productName || (position.product ? position.product.name : 'Unknown'),
                 purchaseDate: new Date().toISOString()
             }
@@ -228,13 +241,15 @@ class BotController {
             const updatedPurchases = [...currentPurchases, purchase]
 
             await client.update({
-                purchasedPositions: updatedPurchases
+                purchasedPositions: updatedPurchases,
+                balance: currentBalance - purchasePrice
             })
 
             return res.json({
                 success: true,
                 purchase: purchase,
-                totalPurchases: updatedPurchases.length
+                totalPurchases: updatedPurchases.length,
+                balance: currentBalance - purchasePrice
             })
         } catch (e) {
             next(ApiError.internal(e.message))
@@ -262,6 +277,84 @@ class BotController {
                 purchases: purchases,
                 total: purchases.length
             })
+        } catch (e) {
+            next(ApiError.internal(e.message))
+        }
+    }
+
+    async getClientBalance(req, res, next) {
+        try {
+            const { telegramId } = req.params
+            let client = await Client.findOne({ where: { telegramId } })
+
+            if (!client) {
+                client = await Client.create({
+                    telegramId,
+                    balance: 0,
+                    purchasedPositions: []
+                })
+            }
+
+            return res.json({
+                telegramId: client.telegramId,
+                balance: parseFloat(client.balance || 0)
+            })
+        } catch (e) {
+            next(ApiError.internal(e.message))
+        }
+    }
+
+    async adjustClientBalance(req, res, next) {
+        try {
+            const { telegramId } = req.params
+            const { amount } = req.body
+
+            const parsedAmount = parseFloat(amount)
+
+            if (isNaN(parsedAmount) || parsedAmount === 0) {
+                return next(ApiError.badRequest('Amount must be a non-zero number'))
+            }
+
+            let client = await Client.findOne({ where: { telegramId } })
+            if (!client) {
+                client = await Client.create({
+                    telegramId,
+                    balance: 0,
+                    purchasedPositions: []
+                })
+            }
+
+            const currentBalance = parseFloat(client.balance || 0)
+            const newBalance = currentBalance + parsedAmount
+
+            if (newBalance < 0) {
+                return next(ApiError.badRequest('Insufficient balance for this operation'))
+            }
+
+            await client.update({ balance: newBalance })
+
+            return res.json({
+                telegramId: client.telegramId,
+                previousBalance: currentBalance,
+                balance: newBalance,
+                changedBy: parsedAmount
+            })
+        } catch (e) {
+            next(ApiError.internal(e.message))
+        }
+    }
+
+    async testTopUpBalance(req, res, next) {
+        try {
+            let { amount } = req.body
+            amount = amount !== undefined ? parseFloat(amount) : 25
+
+            if (isNaN(amount) || amount <= 0) {
+                return next(ApiError.badRequest('Amount must be a positive number'))
+            }
+
+            req.body.amount = amount
+            return this.adjustClientBalance(req, res, next)
         } catch (e) {
             next(ApiError.internal(e.message))
         }

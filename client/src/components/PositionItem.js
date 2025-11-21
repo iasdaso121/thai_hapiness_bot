@@ -23,7 +23,7 @@ const PositionItem = observer(({ position, onPositionDeleted }) => {
                 <Col>
                     <h6 className="mb-1">{position.name}</h6>
                     <div className="d-flex gap-3 align-items-center text-muted small">
-                        <span>Цена: <strong className="text-dark">{position.price} ₽</strong></span>
+                        <span>Цена: <strong className="text-dark">{position.price} $</strong></span>
                         <span>Тип: <strong>{position.type}</strong></span>
                         <span>Местоположение: <strong>{position.location}</strong></span>
                     </div>
