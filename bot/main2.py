@@ -1,8 +1,9 @@
 import os
 import logging
+from collections import defaultdict
 from telegram import (
-    Update, 
-    InlineKeyboardButton, 
+    Update,
+    InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
     KeyboardButton
@@ -18,8 +19,12 @@ from telegram.ext import (
 import aiohttp
 from datetime import datetime
 
-NODE_API_URL = os.getenv('NODE_API_URL', 'http://localhost:5050/api')
+NODE_API_URL = os.getenv('NODE_API_URL', 'http://server:5050/api')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
+CRYPTO_BOT_TOKEN = os.getenv('CRYPTO_BOT_TOKEN')
+CRYPTO_PAYMENT_ASSET = os.getenv('CRYPTO_PAYMENT_ASSET', 'USDT')
+NGROK_API_URL = os.getenv('NGROK_API_URL', 'http://127.0.0.1:4040/api/tunnels')
+PUBLIC_BASE_URL = os.getenv('PUBLIC_BASE_URL')
 
 # логи
 logging.basicConfig(
@@ -27,6 +32,41 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+user_wallets = defaultdict(lambda: {
+    'balance': 0.0,
+    'invoices': {},
+})
+
+
+async def get_public_base_url():
+    """Получить публичный URL (ngrok или указанный через переменные окружения)."""
+    global PUBLIC_BASE_URL
+
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL.rstrip('/')
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(NGROK_API_URL) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    for tunnel in data.get('tunnels', []):
+                        public_url = tunnel.get('public_url')
+                        if public_url:
+                            PUBLIC_BASE_URL = public_url.rstrip('/')
+                            return PUBLIC_BASE_URL
+    except Exception as e:
+        logger.error(f"Error resolving ngrok url: {e}")
+
+    fallback_url = NODE_API_URL.split('/api')[0] if '/api' in NODE_API_URL else NODE_API_URL
+    PUBLIC_BASE_URL = fallback_url.rstrip('/')
+    return PUBLIC_BASE_URL
+
+
+async def build_public_media_url(path: str) -> str:
+    base_url = await get_public_base_url()
+    return f"{base_url}/{path.lstrip('/')}"
 
 class BotAPI:
     def __init__(self, base_url):
@@ -177,18 +217,79 @@ class BotAPI:
 
 api = BotAPI(NODE_API_URL)
 
+
+class CryptoBotAPI:
+    def __init__(self, token):
+        self.base_url = 'https://pay.crypt.bot/api'
+        self.token = token
+
+    async def _post(self, endpoint, payload=None):
+        if not self.token:
+            logger.warning("Crypto Bot token is not configured")
+            return None
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Crypto-Pay-API-Token': self.token
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{self.base_url}/{endpoint}", json=payload or {}, headers=headers) as resp:
+                    data = await resp.json()
+                    if data.get('ok'):
+                        return data.get('result')
+                    logger.error(f"Crypto Bot API error ({endpoint}): {data}")
+        except Exception as e:
+            logger.error(f"Error calling Crypto Bot API {endpoint}: {e}")
+        return None
+
+    async def get_balance(self):
+        return await self._post('getBalance')
+
+    async def create_invoice(self, asset, amount, description=None, payload=None):
+        body = {
+            'asset': asset,
+            'amount': amount,
+        }
+        if description:
+            body['description'] = description
+        if payload:
+            body['payload'] = payload
+        return await self._post('createInvoice', body)
+
+    async def get_invoice(self, invoice_id):
+        result = await self._post('getInvoices', {'invoice_ids': [invoice_id]})
+        if result and result.get('items'):
+            return result['items'][0]
+        return None
+
+
+crypto_bot = CryptoBotAPI(CRYPTO_BOT_TOKEN)
+
 MAIN_MENU = ReplyKeyboardMarkup([
     [KeyboardButton("👤 Профиль"), KeyboardButton("Каталог"), KeyboardButton("🏙️ Город")],
-    [KeyboardButton("📦 Заказы"), KeyboardButton("ℹ️ О нас"), KeyboardButton("❓ Помощь")]
+    [KeyboardButton("📦 Заказы"), KeyboardButton("ℹ️ О нас"), KeyboardButton("❓ Помощь")],
+    [KeyboardButton("💳 Баланс")]
 ], resize_keyboard=True)
 
 # Состояния пользователей
 user_states = {}
 
+
+def get_user_wallet(user_id):
+    return user_wallets[user_id]
+
+
+def format_amount(value):
+    return f"{float(value):.2f}"
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
     logger.info(f"User {user.id} started the bot")
+
+    get_user_wallet(user.id)
     
     user_states[user.id] = {
         'city_id': None,
@@ -201,7 +302,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_content = await api.get_bot_content('welcome')
     
     if welcome_content and welcome_content.get('image'):
-        image_url = f"http://localhost:5050/{welcome_content['image']}"
+        image_url = await build_public_media_url(welcome_content['image'])
         try:
             await update.message.reply_photo(
                 photo=image_url,
@@ -238,13 +339,15 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_about_menu(update, context)
     elif text == "❓ Помощь":
         await show_help_menu(update, context)
+    elif text == "💳 Баланс":
+        await show_balance_menu(update, context)
 
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать профиль пользователя"""
     user = update.effective_user
     user_id = user.id
-    
+
     client_data = await api.get_client_purchases(user_id)
     
     if not client_data:
@@ -263,12 +366,15 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_state = user_states.get(user_id, {})
     location_info = await get_location_button_text(user_state)
-    
+
+    wallet = get_user_wallet(user_id)
+
     profile_text = (
         f"👤 <b>Профиль</b>\n\n"
         f"🆔 ID: {user_id}\n"
         f"📛 Ник: @{username}\n"
         f"Завершенных покупок: <b>{purchases_count}</b>\n\n"
+        f"Баланс: <b>{format_amount(wallet['balance'])} {CRYPTO_PAYMENT_ASSET}</b>\n"
         f"Ваш город - {location_info}"
     )
     
@@ -277,6 +383,116 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML',
         reply_markup=MAIN_MENU
     )
+
+
+async def show_balance_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать баланс и варианты пополнения."""
+    user = update.effective_user if update.message else update.callback_query.from_user
+    wallet = get_user_wallet(user.id)
+
+    text = (
+        f"💳 <b>Ваш баланс</b>\n\n"
+        f"Доступно: <b>{format_amount(wallet['balance'])} {CRYPTO_PAYMENT_ASSET}</b>\n"
+        f"Выберите сумму пополнения или проверьте оплату активных инвойсов."
+    )
+
+    buttons = [
+        [
+            InlineKeyboardButton(f"Пополнить 10 {CRYPTO_PAYMENT_ASSET}", callback_data=f"topup_{CRYPTO_PAYMENT_ASSET}_10"),
+            InlineKeyboardButton(f"Пополнить 25 {CRYPTO_PAYMENT_ASSET}", callback_data=f"topup_{CRYPTO_PAYMENT_ASSET}_25"),
+        ],
+        [InlineKeyboardButton(f"Пополнить 50 {CRYPTO_PAYMENT_ASSET}", callback_data=f"topup_{CRYPTO_PAYMENT_ASSET}_50")]
+    ]
+
+    pending_buttons = []
+    for invoice_id, data in wallet['invoices'].items():
+        if data.get('status') != 'paid':
+            pending_buttons.append(
+                [InlineKeyboardButton(f"Проверить оплату #{invoice_id}", callback_data=f"check_{invoice_id}")]
+            )
+
+    reply_markup = InlineKeyboardMarkup(buttons + pending_buttons) if (pending_buttons or buttons) else MAIN_MENU
+
+    if update.message:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=reply_markup)
+    else:
+        await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=reply_markup)
+
+
+async def create_topup_invoice(update: Update, asset: str, amount: float):
+    user = update.effective_user if update.message else update.callback_query.from_user
+    invoice = await crypto_bot.create_invoice(asset, amount, description="Пополнение баланса", payload=str(user.id))
+
+    if not invoice:
+        message = (
+            "❌ <b>Не удалось создать инвойс</b>\n"
+            "Проверьте CRYPTO_BOT_TOKEN и повторите попытку."
+        )
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("Вернуться к балансу", callback_data="balance_menu")]])
+        if update.message:
+            await update.message.reply_text(message, parse_mode='HTML', reply_markup=MAIN_MENU)
+        else:
+            await update.callback_query.edit_message_text(message, parse_mode='HTML', reply_markup=markup)
+        return
+
+    wallet = get_user_wallet(user.id)
+    wallet['invoices'][invoice['invoice_id']] = {
+        'amount': amount,
+        'asset': asset,
+        'status': invoice.get('status', 'active')
+    }
+
+    buttons = [[InlineKeyboardButton("Оплатить через Crypto Bot", url=invoice.get('pay_url'))]]
+    buttons.append([InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_{invoice['invoice_id']}")])
+
+    text = (
+        f"✅ Инвойс создан!\n"
+        f"Сумма: <b>{format_amount(amount)} {asset}</b>\n"
+        f"Invoice ID: <code>{invoice['invoice_id']}</code>"
+    )
+
+    if update.message:
+        await update.message.reply_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(buttons))
+    else:
+        await update.callback_query.edit_message_text(text, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(buttons))
+
+
+async def check_invoice_status(update: Update, invoice_id: str):
+    user = update.effective_user if update.message else update.callback_query.from_user
+    invoice = await crypto_bot.get_invoice(invoice_id)
+
+    if not invoice:
+        message = "❌ Не удалось получить информацию об оплате. Попробуйте позже."
+        if update.message:
+            await update.message.reply_text(message, reply_markup=MAIN_MENU)
+        else:
+            await update.callback_query.edit_message_text(message, reply_markup=MAIN_MENU)
+        return
+
+    wallet = get_user_wallet(user.id)
+    stored_invoice = wallet['invoices'].get(int(invoice_id))
+
+    if invoice.get('status') == 'paid' and stored_invoice and stored_invoice.get('status') != 'paid':
+        wallet['balance'] += float(stored_invoice.get('amount', 0))
+        stored_invoice['status'] = 'paid'
+
+        message = (
+            f"✅ Оплата подтверждена!\n"
+            f"Баланс пополнен на <b>{format_amount(stored_invoice.get('amount', 0))} {stored_invoice.get('asset')}</b>.\n"
+            f"Текущий баланс: <b>{format_amount(wallet['balance'])} {stored_invoice.get('asset')}</b>"
+        )
+    else:
+        message = (
+            f"Инвойс #{invoice_id} имеет статус: <b>{invoice.get('status')}</b>.\n"
+            "Нажмите «Проверить оплату» после завершения платежа."
+        )
+
+    buttons = [[InlineKeyboardButton("Вернуться к балансу", callback_data="balance_menu")]]
+
+    if update.message:
+        await update.message.reply_text(message, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(buttons))
+    else:
+        await update.callback_query.edit_message_text(message, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(buttons))
 
 async def show_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать список заказов (покупок) пользователя"""
@@ -549,10 +765,11 @@ async def show_product_details(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     
     user_states[user_id]['current_product'] = product_id
+    print(product_id)
     
     # Отправляем фото продукта
     if product.get('img'):
-        image_url = f"http://localhost:5050/{product['img']}"
+        image_url = await build_public_media_url(product['img'])
         try:
             caption = (
                 f"<b>📦 {product['name']}</b>\n\n"
@@ -595,7 +812,7 @@ async def show_product_details(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard = []
     for position in positions:
         keyboard.append([InlineKeyboardButton(
-            f"💰 {position['price']}฿ - {position['name']}", 
+            f"💰 {position['price']}฿ - {position['name']} - {position['location']}", 
             callback_data=f"pos_{position['id']}"
         )])
     
@@ -845,7 +1062,7 @@ async def show_about_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     about_content = await api.get_bot_content('about')
     
     if about_content and about_content.get('image'):
-        image_url = f"http://localhost:5050/{about_content['image']}"
+        image_url = await build_public_media_url(about_content['image'])
         try:
             await update.message.reply_photo(
                 photo=image_url,
@@ -869,7 +1086,7 @@ async def show_help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_content = await api.get_bot_content('help')
     
     if help_content and help_content.get('image'):
-        image_url = f"http://localhost:5050/{help_content['image']}"
+        image_url = await build_public_media_url(help_content['image'])
         try:
             await update.message.reply_photo(
                 photo=image_url,
@@ -888,35 +1105,58 @@ async def show_help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=MAIN_MENU
     )
 
+
 async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, position_id):
     """Обработчик покупки позиции"""
     query = update.callback_query
     await query.answer()
-    
+
     user = query.from_user
     position = await api.get_position_by_id(position_id)
-    
+
     if not position:
         await query.edit_message_text(
             "❌ <b>Ошибка:</b> Позиция не найдена",
             parse_mode='HTML'
         )
         return
-    
+
     client = await api.get_or_create_client(
         user.id,
         user.username,
         user.first_name,
         user.last_name
     )
-    
+
     if not client:
         await query.edit_message_text(
             "❌ <b>Ошибка:</b> Не удалось создать клиента",
             parse_mode='HTML'
         )
         return
-    
+
+    wallet = get_user_wallet(user.id)
+    price = float(position['price'])
+
+    if wallet['balance'] < price:
+        missing = price - wallet['balance']
+        await query.edit_message_text(
+            (
+                "❌ <b>Недостаточно средств</b>\n\n"
+                f"Стоимость позиции: <b>{format_amount(price)}</b>\n"
+                f"Доступно: <b>{format_amount(wallet['balance'])}</b>\n"
+                f"Не хватает: <b>{format_amount(missing)}</b>"
+            ),
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("💳 Пополнить баланс", callback_data="balance_menu")],
+                [InlineKeyboardButton("Проверить оплату", callback_data=f"check_pending_{user.id}")]
+            ])
+        )
+        return
+
+    wallet['balance'] -= price
+
     # Добавляем покупку
     purchase_result = await api.add_purchase(
         user.id,
@@ -925,7 +1165,7 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
         position['price'],
         position.get('product', {}).get('name')
     )
-    
+
     if purchase_result and purchase_result.get('success'):
         await query.edit_message_text(
             f"✅ <b>Заказ оформлен!</b>\n\n"
@@ -938,6 +1178,7 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
             ])
         )
     else:
+        wallet['balance'] += price
         await query.edit_message_text(
             "❌ <b>Ошибка при оформлении заказа</b>\n\n",
             parse_mode='HTML',
@@ -965,6 +1206,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("pos_"):
         position_id = data.split("_")[1]
         await show_position_details(update, context, position_id)
+    elif data.startswith("topup_"):
+        _, asset, amount = data.split("_")
+        await create_topup_invoice(update, asset, float(amount))
+    elif data.startswith("check_pending_"):
+        await show_balance_menu(update, context)
+    elif data.startswith("check_"):
+        invoice_id = data.split("_")[1]
+        await check_invoice_status(update, invoice_id)
     elif data.startswith("city_"):
         city_id = data.split("_")[1]
         await show_district_selection(update, context, city_id)
@@ -994,6 +1243,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML',
             reply_markup=MAIN_MENU
         )
+    elif data == "balance_menu":
+        await show_balance_menu(update, context)
     elif data.startswith("buy_"):
         position_id = data.split("_")[1]
         await handle_purchase(update, context, position_id)
@@ -1027,9 +1278,10 @@ async def show_categories_from_callback(update: Update, context: ContextTypes.DE
 
 def main():
     application = Application.builder().token(BOT_TOKEN).build()
-    
+
     application.add_handler(CommandHandler("start", start))
-    
+    application.add_handler(CommandHandler("balance", show_balance_menu))
+
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_main_menu))
     
     application.add_handler(CallbackQueryHandler(button_handler))

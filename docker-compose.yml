@@ -64,6 +64,10 @@ services:
       NODE_API_URL: http://server:${PORT}/api
       BOT_TOKEN: ${BOT_TOKEN}
       LOG_LEVEL: INFO
+      CRYPTO_BOT_TOKEN: ${CRYPTO_BOT_TOKEN}
+      CRYPTO_PAYMENT_ASSET: ${CRYPTO_PAYMENT_ASSET:-USDT}
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+      NGROK_TUNNEL_TARGET: ${NGROK_TUNNEL_TARGET:-http://server:${PORT}}
     depends_on:
       - server
     networks:
