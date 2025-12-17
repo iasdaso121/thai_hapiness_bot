@@ -1,16 +1,17 @@
-import { 
-  ADMIN_ROUTE, LOGIN_ROUTE, SHOP_ROUTE, 
-  ADMIN_CITIES_ROUTE, ADMIN_PRODUCTS_ROUTE, ADMIN_CONTENT_ROUTE,
-  ADMIN_POSITIONS_ROUTE
+import {
+    ADMIN_ROUTE, LOGIN_ROUTE, SHOP_ROUTE,
+    ADMIN_CITIES_ROUTE, ADMIN_PRODUCTS_ROUTE, ADMIN_CONTENT_ROUTE,
+    ADMIN_POSITIONS_ROUTE, ADMIN_REVIEWS_ROUTE
 } from "./utils/consts"
 
 import Admin from "./pages/Admin"
 import Shop from "./pages/Shop"
 import Auth from "./pages/Auth"
 import CitiesAdmin from "./pages/CitiesAdmin"
-import ProductsAdmin from "./pages/ProductsAdmin"  
+import ProductsAdmin from "./pages/ProductsAdmin"
 import ContentAdmin from "./pages/ContentAdmin"
 import PositionsAdmin from "./pages/PositionsAdmin"
+import ReviewsAdmin from "./pages/ReviewsAdmin"
 
 export const authRoutes = [
     {
@@ -22,7 +23,7 @@ export const authRoutes = [
         Component: CitiesAdmin
     },
     {
-        path: ADMIN_PRODUCTS_ROUTE, 
+        path: ADMIN_PRODUCTS_ROUTE,
         Component: ProductsAdmin
     },
     {
@@ -32,6 +33,10 @@ export const authRoutes = [
     {
         path: ADMIN_CONTENT_ROUTE,
         Component: ContentAdmin
+    },
+    {
+        path: ADMIN_REVIEWS_ROUTE,
+        Component: ReviewsAdmin
     },
     {
         path: SHOP_ROUTE,

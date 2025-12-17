@@ -1,70 +1,77 @@
 const sequelize = require('../db')
-const {DataTypes} = require('sequelize')
+const { DataTypes } = require('sequelize')
 const bcrypt = require('bcrypt')
 require('dotenv').config()
 
 const BotContent = sequelize.define('bot_content', {
-    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
-    key: {type: DataTypes.STRING, unique: true, allowNull: false}, // 'welcome', 'help', 'about'
-    text: {type: DataTypes.TEXT},
-    image: {type: DataTypes.STRING},
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    key: { type: DataTypes.STRING, unique: true, allowNull: false }, // 'welcome', 'help', 'about'
+    text: { type: DataTypes.TEXT },
+    image: { type: DataTypes.STRING },
 })
 
 const User = sequelize.define('user', {
-    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
-    name: {type: DataTypes.STRING, unique: true},
-    password: {type: DataTypes.STRING, allowNull: true},
-    role: {type: DataTypes.STRING, defaultValue: "USER"},
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    name: { type: DataTypes.STRING, unique: true },
+    password: { type: DataTypes.STRING, allowNull: true },
+    role: { type: DataTypes.STRING, defaultValue: "USER" },
 })
 
 const Category = sequelize.define('category', {
-    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
-    name: {type: DataTypes.STRING, unique: true, allowNull: false},
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    name: { type: DataTypes.STRING, unique: true, allowNull: false },
 })
 
 const Product = sequelize.define('product', {
-    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
-    name: {type: DataTypes.STRING, unique: true, allowNull: false},
-    description: {type: DataTypes.TEXT, defaultValue: "description"},
-    img: {type: DataTypes.STRING, allowNull: false},
-        
-    categoryId: {type: DataTypes.INTEGER, allowNull: false},
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    name: { type: DataTypes.STRING, unique: true, allowNull: false },
+    description: { type: DataTypes.TEXT, defaultValue: "description" },
+    img: { type: DataTypes.STRING, allowNull: false },
+
+    categoryId: { type: DataTypes.INTEGER, allowNull: false },
 })
 
 const Position = sequelize.define('position', {
-    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
-    name: {type: DataTypes.STRING, unique: true, allowNull: false},
-    price: {type: DataTypes.INTEGER, allowNull: false},
-    location: {type: DataTypes.STRING, allowNull: false},
-    type: {type: DataTypes.STRING, allowNull: false},
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    name: { type: DataTypes.STRING, allowNull: false },
+    price: { type: DataTypes.INTEGER, allowNull: false },
+    location: { type: DataTypes.STRING, allowNull: false },
+    type: { type: DataTypes.STRING, allowNull: false },
 
-    productId: {type: DataTypes.INTEGER, allowNull: false},
-    cityId: {type: DataTypes.INTEGER, allowNull: false},
-    districtId: {type: DataTypes.INTEGER, allowNull: false},
+    productId: { type: DataTypes.INTEGER, allowNull: false },
+    cityId: { type: DataTypes.INTEGER, allowNull: false },
+    districtId: { type: DataTypes.INTEGER, allowNull: false },
 })
 
 const City = sequelize.define('city', {
-    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
-    name: {type: DataTypes.STRING, unique: true, allowNull: false},
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    name: { type: DataTypes.STRING, unique: true, allowNull: false },
 })
 
 const District = sequelize.define('district', {
-    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
-    name: {type: DataTypes.STRING, allowNull: false},
-    cityId: {type: DataTypes.INTEGER, allowNull: false},
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    name: { type: DataTypes.STRING, allowNull: false },
+    cityId: { type: DataTypes.INTEGER, allowNull: false },
 })
 
 const Client = sequelize.define('client', {
-    id: {type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true},
-    telegramId: {type: DataTypes.BIGINT, unique: true, allowNull: false},
-    username: {type: DataTypes.STRING},
-    firstName: {type: DataTypes.STRING},
-    lastName: {type: DataTypes.STRING},
-    balance: {type: DataTypes.FLOAT, allowNull: false, defaultValue: 0},
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    telegramId: { type: DataTypes.BIGINT, unique: true, allowNull: false },
+    username: { type: DataTypes.STRING },
+    firstName: { type: DataTypes.STRING },
+    lastName: { type: DataTypes.STRING },
+    balance: { type: DataTypes.FLOAT, allowNull: false, defaultValue: 0 },
     purchasedPositions: {
-        type: DataTypes.JSON, 
+        type: DataTypes.JSON,
         defaultValue: []
     }
+})
+
+const Review = sequelize.define('review', {
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    text: { type: DataTypes.TEXT, allowNull: false },
+    author: { type: DataTypes.STRING, allowNull: false },
+    rating: { type: DataTypes.INTEGER, defaultValue: 5 },
 })
 
 Client.belongsToMany(Position, { through: 'ClientPositions' })
@@ -92,14 +99,14 @@ const createDefaultAdmin = async () => {
     try {
         const adminLogin = process.env.ADMIN_LOGIN
         const adminPassword = process.env.ADMIN_PASSWORD
-        
+
         if (!adminLogin || !adminPassword) {
             console.log('ADMIN_LOGIN or ADMIN_PASSWORD not set in .env, skipping admin creation')
             return
         }
-        
+
         const adminExists = await User.findOne({ where: { name: adminLogin } })
-        
+
         if (!adminExists) {
             const hashPassword = await bcrypt.hash(adminPassword, 4)
             await User.create({
@@ -117,6 +124,6 @@ const createDefaultAdmin = async () => {
 }
 
 module.exports = {
-    User, BotContent, Category, Product, Position, City, District, Client,
-    createDefaultAdmin 
+    User, BotContent, Category, Product, Position, City, District, Client, Review,
+    createDefaultAdmin
 }

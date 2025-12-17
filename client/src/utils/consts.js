@@ -4,6 +4,7 @@ export const ADMIN_ROUTE = '/admin'
 export const POSITION_ROUTE = '/position'
 
 export const ADMIN_CITIES_ROUTE = '/admin/cities'
-export const ADMIN_PRODUCTS_ROUTE = '/admin/products' 
+export const ADMIN_PRODUCTS_ROUTE = '/admin/products'
 export const ADMIN_CONTENT_ROUTE = '/admin/content'
 export const ADMIN_POSITIONS_ROUTE = '/admin/positions'
+export const ADMIN_REVIEWS_ROUTE = '/admin/reviews'

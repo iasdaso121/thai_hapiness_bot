@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram Bot Landing</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 60px 0 40px;
+      font-family: "Inter", sans-serif;
+      background: radial-gradient(circle at top right, #4d1aff, #0a0a0f 60%);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow-x: hidden;
+      box-sizing: border-box;
+    }
+
+    h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      margin: 0 0 10px 0;
+      text-align: center;
+      background: linear-gradient(120deg, #ff00f2, #00eaff, #ffae00);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p {
+      max-width: 480px;
+      text-align: center;
+      opacity: 0.85;
+      font-size: 1.1rem;
+      margin-bottom: 40px;
+      line-height: 1.5;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 14px 28px;
+      background: linear-gradient(135deg, #7f00ff, #e100ff);
+      border-radius: 14px;
+      color: #fff;
+      font-size: 1.2rem;
+      font-weight: 600;
+      text-decoration: none;
+      box-shadow: 0 0 20px rgba(255, 0, 200, 0.4);
+      transition: 0.25s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-3px) scale(1.03);
+      box-shadow: 0 0 30px rgba(255, 0, 200, 0.6);
+    }
+
+    .glow {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(0,255,213,0.25), rgba(0,0,0,0));
+      filter: blur(120px);
+      z-index: -1;
+      top: 40%;
+      left: 10%;
+    }
+
+    .glow2 {
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(255,0,200,0.25), rgba(0,0,0,0));
+      filter: blur(140px);
+      z-index: -1;
+      top: 10%;
+      right: 0;
+    }
+
+    .logo {
+      margin: 30px 0 20px;
+      animation: fadeIn 1s ease;
+    }
+    .logo img {
+      width: 110px;
+      height: 110px;
+      border-radius: 20px;
+      object-fit: cover;
+      box-shadow: 0 0 25px rgba(255, 0, 200, 0.4);
+    }
+
+    .product-list {
+      list-style: none;
+      padding: 0;
+      margin: 20px 0 40px 0;
+      text-align: center;
+      font-size: 1.15rem;
+      opacity: .9;
+    }
+    .product-list li {
+      margin: 8px 0;
+      background: rgba(255,255,255,0.06);
+      padding: 10px 16px;
+      border-radius: 12px;
+      backdrop-filter: blur(4px);
+      display: inline-block;
+      box-shadow: 0 0 10px rgba(255,0,200,0.15);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .cities-block {
+      max-width: 780px;
+      margin: 30px auto;
+      text-align: center;
+      animation: fadeIn 1.2s ease;
+    }
+    .cities-title {
+      font-size: 1.6rem;
+      margin-bottom: 18px;
+      background: linear-gradient(120deg, #ff00f2, #00eaff, #ffae00);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .cities-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+    .city-card {
+      background: rgba(255,255,255,0.06);
+      padding: 16px 20px;
+      border-radius: 16px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 0 14px rgba(255,0,200,0.2);
+      text-align: center;
+    }
+    .city-card h3 {
+      margin: 0 0 6px;
+      font-size: 1.25rem;
+    }
+    .city-card p {
+      margin: 0;
+      font-size: 0.95rem;
+      opacity: 0.85;
+    }
+
+    .cta {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      margin: 40px 0;
+    }
+</style>
+</head>
+<body>
+
+  <!-- ЛОГО -->
+  <div class="logo">
+    <img src="logo.jpeg" alt="logo" />
+  </div>
+
+  <div class="glow"></div>
+  <div class="glow2"></div>
+
+  <h1>Psy Thai Bot</h1>
+  <p>Умный, быстрый и удобный. Нажми на кнопку ниже, чтобы перейти в бота и начать пользоваться прямо сейчас.</p>
+
+  <div class="cta">
+    <a href="https://t.me/your_bot_here" class="btn">Перейти в Telegram</a>
+  </div>
+
+  <!-- СПИСОК ТОВАРОВ -->
+  <ul class="product-list">
+    <li>✨ Товар 1 — яркое описание</li>
+    <li>🔥 Товар 2 — выгодное предложение</li>
+    <li>🌈 Товар 3 — премиальное качество</li>
+    <li>⚡ Товар 4 — лучший выбор</li>
+  </ul>
+
+  <!-- ГОРОДА И РАЙОНЫ -->
+  <div class="cities-block">
+    <h2 class="cities-title">📍 Большое наличие по городам и районам</h2>
+    <div class="cities-grid">
+      <div class="city-card">
+        <h3>Пхукет</h3>
+        <p>Патонг · Банг-Тао · Карон · Олд Таун · Камала · Равай · Най Харон</p>
+      </div>
+      <div class="city-card">
+        <h3>Паттая</h3>
+        <p>Адмиралтейский · Московский · Приморский · Невский · Центральный</p>
+      </div>
+      <div class="city-card">
+        <h3>Екатеринбург</h3>
+        <p>Ленинский · Октябрьский · Верх-Исетский · Чкаловский</p>
+      </div>
+      <div class="city-card">
+        <h3>Новосибирск</h3>
+        <p>Центральный · Октябрьский · Ленинский · Калининский</p>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

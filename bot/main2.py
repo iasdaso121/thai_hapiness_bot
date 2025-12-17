@@ -241,6 +241,30 @@ class BotAPI:
             logger.error(f"Error adjusting client balance: {e}")
             return None
 
+    async def get_reviews_stats(self):
+        """Получить статистику отзывов"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{self.base_url}/review/stats') as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return None
+        except Exception as e:
+            logger.error(f"Error getting review stats: {e}")
+            return None
+
+    async def get_reviews(self):
+        """Получить список отзывов"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{self.base_url}/review') as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return []
+        except Exception as e:
+            logger.error(f"Error getting reviews: {e}")
+            return []
+
 api = BotAPI(NODE_API_URL)
 
 
@@ -296,7 +320,7 @@ crypto_bot = CryptoBotAPI(CRYPTO_BOT_TOKEN)
 MAIN_MENU = ReplyKeyboardMarkup([
     [KeyboardButton("👤 Профиль"), KeyboardButton("Каталог"), KeyboardButton("🏙️ Город")],
     [KeyboardButton("📦 Заказы"), KeyboardButton("ℹ️ О нас"), KeyboardButton("❓ Помощь")],
-    [KeyboardButton("💳 Баланс")]
+    [KeyboardButton("💳 Баланс"), KeyboardButton("⭐ Отзывы")]
 ], resize_keyboard=True)
 
 # Состояния пользователей
@@ -345,13 +369,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     get_user_state(user.id)
     
     welcome_content = await api.get_bot_content('welcome')
+    review_stats = await api.get_reviews_stats()
+    
+    stats_text = ""
+    if review_stats and review_stats.get('count', 0) > 0:
+        stats_text = f"\n\n⭐ <b>Рейтинг магазина: {review_stats.get('average')}</b> ({review_stats.get('count')} отзывов)"
+
+    text = welcome_content.get('text', 'welcome') if welcome_content else 'welcome'
+    text += stats_text
     
     if welcome_content and welcome_content.get('image'):
         image_url = await build_public_media_url(welcome_content['image'])
         try:
             await update.message.reply_photo(
                 photo=image_url,
-                caption=welcome_content.get('text', 'welcome 1'),
+                caption=text,
                 parse_mode='HTML',
                 reply_markup=MAIN_MENU
             )
@@ -360,8 +392,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Error sending welcome photo: {e}")
     
     await update.message.reply_text(
-        welcome_content.get('text', 'welcome 2') if welcome_content 
-        else 'welcome 3',
+        text,
         parse_mode='HTML',
         reply_markup=MAIN_MENU
     )
@@ -417,6 +448,38 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_help_menu(update, context)
     elif text == "💳 Баланс":
         await show_balance_menu(update, context)
+    elif text == "⭐ Отзывы":
+        await show_reviews_menu(update, context)
+
+
+async def show_reviews_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показать меню отзывов"""
+    reviews = await api.get_reviews()
+    stats = await api.get_reviews_stats()
+    
+    if not reviews:
+        await update.message.reply_text(
+            "😔 <b>Отзывов пока нет</b>",
+            parse_mode='HTML',
+            reply_markup=MAIN_MENU
+        )
+        return
+
+    text = f"⭐ <b>Отзывы наших клиентов</b>\n"
+    if stats:
+        text += f"Рейтинг: <b>{stats.get('average')}</b> ({stats.get('count')} отзывов)\n\n"
+    
+    # Show last 10 reviews
+    last_reviews = reviews[-10:]
+    for r in last_reviews:
+        rating_stars = "⭐" * r.get('rating', 5)
+        text += f"👤 <b>{r.get('author')}</b> {rating_stars}\n{r.get('text')}\n\n"
+        
+    await update.message.reply_text(
+        text,
+        parse_mode='HTML',
+        reply_markup=MAIN_MENU
+    )
 
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
