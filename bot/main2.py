@@ -977,11 +977,19 @@ async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE, cate
     message_text = f"📦 <b>Выберите продукт (страница {page}):</b>"
     
     if message_edit:
-        await query.edit_message_text(
-            message_text,
-            parse_mode='HTML',
-            reply_markup=reply_markup
-        )
+        if query.message.photo:
+            await query.message.delete()
+            await query.message.reply_text(
+                message_text,
+                parse_mode='HTML',
+                reply_markup=reply_markup
+            )
+        else:
+            await query.edit_message_text(
+                message_text,
+                parse_mode='HTML',
+                reply_markup=reply_markup
+            )
     else:
         await update.message.reply_text(
             message_text,
