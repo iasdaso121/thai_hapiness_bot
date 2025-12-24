@@ -1453,7 +1453,7 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
         invoice = await crypto_bot.create_invoice(
             CRYPTO_PAYMENT_ASSET, 
             missing, 
-            description=f"Доплата за товар: {position.get('product', {}).get('name')}", 
+            description="Оплата заказа", 
             payload=str(user.id)
         )
         
@@ -1475,10 +1475,10 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
         await query.edit_message_text(
             (
                 "❌ <b>Недостаточно средств</b>\n\n"
-                f"Стоимость позиции: <b>{format_amount(price)} $</b>\n"
-                f"Доступно: <b>{format_amount(wallet['balance'])} $</b>\n"
-                f"Не хватает: <b>{format_amount(missing)} $</b>\n\n"
-                f"Инвойс на недостающую сумму <b>{format_amount(missing)} {CRYPTO_PAYMENT_ASSET}</b> создан автоматически."
+                f"Стоимость: <b>{format_amount(price)} $</b>\n"
+                f"Ваш баланс: <b>{format_amount(wallet['balance'])} $</b>\n"
+                f"К доплате: <b>{format_amount(missing)} $</b>\n\n"
+                f"Инвойс создан автоматически. <b>Вы можете оплатить его любой популярной криптовалютой (BTC, ETH, LTC, TON и др.)</b> — сумма будет сконвертирована по текущему курсу."
             ),
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup(buttons)
