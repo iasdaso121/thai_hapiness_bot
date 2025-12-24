@@ -366,7 +366,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     get_user_wallet(user.id)
     await sync_wallet_balance(user.id)
     
-    get_user_state(user.id)
+    user_state = get_user_state(user.id)
+    
+    # Check if city/district selected
+    city_id = user_state.get('city_id')
+    district_id = user_state.get('district_id')
     
     welcome_content = await api.get_bot_content('welcome')
     review_stats = await api.get_reviews_stats()
@@ -378,6 +382,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = welcome_content.get('text', 'welcome') if welcome_content else 'welcome'
     text += stats_text
     
+    # If location not selected, don't show main menu, show city selection immediately
+    if not city_id:
+        if welcome_content and welcome_content.get('image'):
+            image_url = await build_public_media_url(welcome_content['image'])
+            try:
+                await update.message.reply_photo(
+                    photo=image_url,
+                    caption=text,
+                    parse_mode='HTML'
+                )
+            except Exception as e:
+                logger.error(f"Error sending welcome photo: {e}")
+        else:
+            await update.message.reply_text(
+                text,
+                parse_mode='HTML'
+            )
+        
+        await show_city_selection(update, context, from_menu=True) # reuse existing function
+        return
+
     if welcome_content and welcome_content.get('image'):
         image_url = await build_public_media_url(welcome_content['image'])
         try:
@@ -402,6 +427,16 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     user_id = update.effective_user.id
     user_state = get_user_state(user_id)
+    
+    # Enforce location selection check for main menu interaction
+    city_id = user_state.get('city_id')
+    district_id = user_state.get('district_id')
+    
+    if not city_id or not district_id:
+        # Check if text is a valid location selection or other allowed command if any
+        # Here we just re-force city selection if they try to access menu
+        await show_city_selection(update, context, from_menu=True)
+        return
 
     # Ожидание ввода суммы для пополнения
     awaiting_topup = user_state.get('awaiting_topup')
@@ -1125,11 +1160,14 @@ async def show_district_selection(update: Update, context: ContextTypes.DEFAULT_
             f"📍 <b>Город выбран!</b>\n\n"
             f"🏙️ {city['name']}\n\n"
             f"Теперь товары будут фильтроваться по вашему городу.",
+            parse_mode='HTML'
+        )
+        
+        # Restore Main Menu
+        await query.message.reply_text(
+            "🏠 <b>Главное меню активировано</b>",
             parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🛍️ В каталог", callback_data="back_to_categories")],
-                # [InlineKeyboardButton("🏠 В меню", callback_data="back_to_menu")]
-            ])
+            reply_markup=MAIN_MENU
         )
         return
     
@@ -1213,14 +1251,17 @@ async def save_location(update: Update, context: ContextTypes.DEFAULT_TYPE, city
         location_text += f", 📍 {district['name']}"
     
     await query.edit_message_text(
-        f"✅ <b>Местоположение сохранено!</b>\n\n"
-        f"{location_text}\n\n"
-        f"Теперь товары будут фильтроваться по выбранной локации",
+            f"✅ <b>Местоположение сохранено!</b>\n\n"
+            f"{location_text}\n\n"
+            f"Теперь товары будут фильтроваться по выбранной локации",
+            parse_mode='HTML'
+        )
+        
+    # Restore Main Menu
+    await query.message.reply_text(
+        "🏠 <b>Главное меню активировано</b>",
         parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🛍️ В каталог", callback_data="back_to_categories")],
-            # [InlineKeyboardButton("🏠 В меню", callback_data="back_to_menu")]
-        ])
+        reply_markup=MAIN_MENU
     )
 
 async def show_about_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
