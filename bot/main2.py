@@ -1120,12 +1120,21 @@ async def show_positions_for_product_and_district(update: Update, context: Conte
     
     keyboard.append([InlineKeyboardButton("🔙 К выбору района", callback_data=f"prod_{product_id}")])
     
-    await query.edit_message_text(
-        f"<b>📦 {product['name']}</b>\n\n"
-        f"📍 <b>Район выбран.</b> Выберите позицию:",
-        parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    if query.message.photo:
+        await query.message.delete()
+        await query.message.reply_text(
+            f"<b>📦 {product['name']}</b>\n\n"
+            f"📍 <b>Район выбран.</b> Выберите позицию:",
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await query.edit_message_text(
+            f"<b>📦 {product['name']}</b>\n\n"
+            f"📍 <b>Район выбран.</b> Выберите позицию:",
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 async def show_position_details(update: Update, context: ContextTypes.DEFAULT_TYPE, position_id):
     """Показать детали позиции"""
