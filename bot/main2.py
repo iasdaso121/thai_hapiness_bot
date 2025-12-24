@@ -1478,7 +1478,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
     
-    if data.startswith("cat_"):
+    if data.startswith("prod_dist_"):
+        # prod_dist_{product_id}_{district_id}
+        parts = data.split("_")
+        product_id = parts[2]
+        district_id = parts[3]
+        await show_positions_for_product_and_district(update, context, product_id, district_id)
+    elif data.startswith("cat_"):
         category_id = data.split("_")[1]
         await show_products(update, context, category_id)
     elif data.startswith("page_"):
@@ -1541,12 +1547,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id]['city_id'] = int(city_id)
         user_states[user_id]['district_id'] = int(district_id)
         await show_products(update, context, category_id)
-    elif data.startswith("prod_dist_"):
-        # prod_dist_{product_id}_{district_id}
-        parts = data.split("_")
-        product_id = parts[2]
-        district_id = parts[3]
-        await show_positions_for_product_and_district(update, context, product_id, district_id)
 
 async def show_categories_from_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать категории из callback"""
