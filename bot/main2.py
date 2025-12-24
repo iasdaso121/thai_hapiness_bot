@@ -1478,7 +1478,7 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
                 f"Стоимость: <b>{format_amount(price)} $</b>\n"
                 f"Ваш баланс: <b>{format_amount(wallet['balance'])} $</b>\n"
                 f"К доплате: <b>{format_amount(missing)} $</b>\n\n"
-                f"Инвойс создан автоматически. <b>Вы можете оплатить его любой популярной криптовалютой (BTC, ETH, LTC, TON и др.)</b> — сумма будет сконвертирована по текущему курсу."
+                f"Инвойс создан автоматически. <b>Вы можете оплатить его любой популярной криптовалютой (BTC, ETH, LTC, USDT, TON и др.)</b> — сумма будет сконвертирована по текущему курсу."
             ),
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup(buttons)
