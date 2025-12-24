@@ -143,6 +143,19 @@ class BotAPI:
         except Exception as e:
             logger.error(f"Error getting cities: {e}")
             return []
+
+    async def get_available_districts(self, category_id, city_id):
+        """Получить доступные районы для категории"""
+        try:
+            params = {'cityId': city_id}
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'{self.base_url}/categories/{category_id}/districts', params=params) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    return []
+        except Exception as e:
+            logger.error(f"Error getting available districts: {e}")
+            return []
     
     async def get_product_by_id(self, product_id):
         """Получить информацию о продукте по ID"""
@@ -871,6 +884,43 @@ async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE, cate
     )
     
     if not products:
+        # Smart suggestion for districts
+        city_id = user_state.get('city_id')
+        suggested_districts = []
+        if city_id:
+             suggested_districts = await api.get_available_districts(category_id, city_id)
+        
+        if suggested_districts:
+            district_buttons = []
+            for d in suggested_districts:
+                # Filter out current district if selected (though if it was selected and had empty products, it's valid to not show it, but current logic implies we are here because current view is empty)
+                # Actually, if we are here, current district selection yielded no results.
+                # So we show others.
+                if str(d['id']) != str(user_state.get('district_id')):
+                    district_buttons.append([InlineKeyboardButton(
+                        f"📍 {d['name']}",
+                        callback_data=f"switch_district_{category_id}_{city_id}_{d['id']}"
+                    )])
+            
+            if district_buttons:
+                district_buttons.append([InlineKeyboardButton("🔙 К категориям", callback_data="back_to_categories")])
+                
+                if message_edit:
+                    await query.edit_message_text(
+                        f"😔 <b>В вашей локации нет товаров этой категории.</b>\n\n"
+                        f"Попробуйте выбрать другой район, где товары есть:",
+                        parse_mode='HTML',
+                        reply_markup=InlineKeyboardMarkup(district_buttons)
+                    )
+                else:
+                    await update.message.reply_text(
+                        f"😔 <b>В вашей локации нет товаров этой категории.</b>\n\n"
+                        f"Попробуйте выбрать другой район, где товары есть:",
+                        parse_mode='HTML',
+                        reply_markup=InlineKeyboardMarkup(district_buttons)
+                    )
+                return
+
         location_info = ""
         if user_state.get('city_id'):
             location_info = "\n\nℹ️ Попробуйте изменить фильтр локации."
@@ -1456,6 +1506,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("buy_"):
         position_id = data.split("_")[1]
         await handle_purchase(update, context, position_id)
+    elif data.startswith("switch_district_"):
+        _, _, category_id, city_id, district_id = data.split("_")
+        user_id = query.from_user.id
+        user_states[user_id]['city_id'] = int(city_id)
+        user_states[user_id]['district_id'] = int(district_id)
+        await show_products(update, context, category_id)
 
 async def show_categories_from_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать категории из callback"""

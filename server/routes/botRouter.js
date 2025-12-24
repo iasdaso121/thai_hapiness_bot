@@ -8,6 +8,7 @@ router.get('/content/:key', botController.getContent)
 router.get('/cities-with-districts', botController.getCitiesWithDistricts)
 router.get('/categories-with-products', botController.getCategoriesWithProducts)
 router.get('/products-by-category/:categoryId', botController.getProductsByCategory)
+router.get('/categories/:categoryId/districts', botController.getAvailableDistrictsForCategory)
 
 // для клиентов и покупок
 router.post('/clients/:telegramId/purchase', botController.addPurchase)
