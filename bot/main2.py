@@ -1448,18 +1448,40 @@ async def handle_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE, po
 
     if wallet['balance'] < price:
         missing = price - wallet['balance']
+        
+        # Auto-create invoice for the missing amount
+        invoice = await crypto_bot.create_invoice(
+            CRYPTO_PAYMENT_ASSET, 
+            missing, 
+            description=f"Доплата за товар: {position.get('product', {}).get('name')}", 
+            payload=str(user.id)
+        )
+        
+        buttons = []
+        if invoice:
+             # Save invoice to local state so check_invoice works
+            wallet['invoices'][invoice['invoice_id']] = {
+                'amount': missing,
+                'asset': CRYPTO_PAYMENT_ASSET,
+                'status': invoice.get('status', 'active')
+            }
+            buttons.append([InlineKeyboardButton(f"💳 Оплатить {format_amount(missing)} {CRYPTO_PAYMENT_ASSET}", url=invoice.get('pay_url'))])
+            buttons.append([InlineKeyboardButton("🔄 Проверить оплату", callback_data=f"check_{invoice['invoice_id']}")]) # Direct check for this invoice
+        else:
+             buttons.append([InlineKeyboardButton("💳 Пополнить баланс", callback_data="balance_menu")])
+        
+        buttons.append([InlineKeyboardButton("🔙 Отмена", callback_data=f"pos_{position_id}")])
+
         await query.edit_message_text(
             (
                 "❌ <b>Недостаточно средств</b>\n\n"
                 f"Стоимость позиции: <b>{format_amount(price)} $</b>\n"
                 f"Доступно: <b>{format_amount(wallet['balance'])} $</b>\n"
-                f"Не хватает: <b>{format_amount(missing)} $</b>"
+                f"Не хватает: <b>{format_amount(missing)} $</b>\n\n"
+                f"Инвойс на недостающую сумму <b>{format_amount(missing)} {CRYPTO_PAYMENT_ASSET}</b> создан автоматически."
             ),
             parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("💳 Пополнить баланс", callback_data="balance_menu")],
-                [InlineKeyboardButton("Проверить оплату", callback_data=f"check_pending_{user.id}")]
-            ])
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
         return
 
