@@ -413,7 +413,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='HTML'
             )
         
-        await show_city_selection(update, context, from_menu=True) # reuse existing function
+        await show_city_selection(update, context, from_menu=True)
         return
 
     if welcome_content and welcome_content.get('image'):
@@ -443,9 +443,8 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Enforce location selection check for main menu interaction
     city_id = user_state.get('city_id')
-    district_id = user_state.get('district_id')
     
-    if not city_id or not district_id:
+    if not city_id:
         # Check if text is a valid location selection or other allowed command if any
         # Here we just re-force city selection if they try to access menu
         await show_city_selection(update, context, from_menu=True)
@@ -879,7 +878,7 @@ async def show_products(update: Update, context: ContextTypes.DEFAULT_TYPE, cate
     products, total_count = await api.get_products_by_category(
         category_id, 
         user_state.get('city_id'), 
-        user_state.get('district_id'),
+        None, # ignore district for product list
         page
     )
     
@@ -999,10 +998,11 @@ async def show_product_details(update: Update, context: ContextTypes.DEFAULT_TYP
     user_state = user_states.get(user_id, {})
     
     product = await api.get_product_by_id(product_id)
+    # Ensure we look for positions in the WHOLE city
     positions = await api.get_positions_by_product(
         product_id, 
         user_state.get('city_id'), 
-        user_state.get('district_id')
+        None # Ignore district_id from state for now, we want to select it here
     )
     
     if not product:
@@ -1016,66 +1016,113 @@ async def show_product_details(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     
     user_states[user_id]['current_product'] = product_id
-    print(product_id)
     
-    # Отправляем фото продукта
+    # Group positions by district
+    districts_map = {}
+    for pos in positions:
+        if pos.get('district'):
+            d_id = pos['district']['id']
+            d_name = pos['district']['name']
+            districts_map[d_id] = d_name
+    
+    # Message header
+    product_caption = (
+        f"<b>📦 {product['name']}</b>\n\n"
+        f"📝 {product.get('description', 'Описание отсутствует')}\n\n"
+    )
+
+    if not positions:
+         # No positions in city
+        keyboard = [[InlineKeyboardButton("🔙 К товарам", callback_data=f"cat_{user_state.get('current_category', '')}")]]
+        text = product_caption + "😔 <b>Нет в наличии в вашем городе.</b>"
+    elif not districts_map:
+        # Positions exist but no district info?? Maybe directly show positions?
+        # Fallback to direct positions list if no district info
+         text = product_caption + "📍 <b>Выберите позицию:</b>"
+         keyboard = []
+         for position in positions:
+            keyboard.append([InlineKeyboardButton(
+                f"💰 {position['price']} $ - {position['name']}", 
+                callback_data=f"pos_{position['id']}"
+            )])
+         keyboard.append([InlineKeyboardButton("🔙 К товарам", callback_data=f"cat_{user_state.get('current_category', '')}")])
+    else:
+        # Show Districts
+        text = product_caption + "📍 <b>Выберите район, где хотите забрать товар:</b>"
+        keyboard = []
+        for d_id, d_name in districts_map.items():
+            keyboard.append([InlineKeyboardButton(
+                f"📍 {d_name}", 
+                callback_data=f"prod_dist_{product_id}_{d_id}"
+            )])
+        keyboard.append([InlineKeyboardButton("🔙 К товарам", callback_data=f"cat_{user_state.get('current_category', '')}")])
+
+    # Send/Edit Message
     if product.get('img'):
         image_url = await build_public_media_url(product['img'])
         try:
-            caption = (
-                f"<b>📦 {product['name']}</b>\n\n"
-                f"📝 {product.get('description', 'Описание отсутствует')}\n\n"
-            )
-            
-            await query.message.reply_photo(
+             # If reusing existing message, we can't easily turn text to photo without deleting. 
+             # But callback usually audits existing message.
+             # Simplest: Delete and Send New if photo? Or just reply_photo if it was text?
+             # `edit_message_media` is complex.
+             # Let's try sending new photo if we can, or just text if image fails.
+             # Actually keeping it simple: if there is an image, we try to send it as a fresh message?
+             # But user clicked "Product X".
+             await query.message.reply_photo(
                 photo=image_url,
-                caption=caption,
-                parse_mode='HTML'
+                caption=text,
+                parse_mode='HTML',
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
+             return
         except Exception as e:
             logger.error(f"Error sending product photo: {e}")
-            await query.message.reply_text(
-                f"<b>📦 {product['name']}</b>\n\n"
-                f"📝 {product.get('description', 'Описание отсутствует')}\n\n",
-                parse_mode='HTML'
-            )
-    else:
-        await query.message.reply_text(
-            f"<b>📦 {product['name']}</b>\n\n"
-            f"📝 {product.get('description', 'Описание отсутствует')}\n\n",
-            parse_mode='HTML'
-        )
-    
-    if not positions:
-        location_button_text = await get_location_button_text(user_state)
-        
-        await query.message.reply_text(
-            "😔 <b>Нет доступных позиций для этого товара</b>\n\n"
-            "Попробуйте изменить фильтр локации.",
+
+    # Fallback text
+    try:
+        await query.edit_message_text(
+            text,
             parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(location_button_text, callback_data=f"loc_prod_{product_id}")],
-                [InlineKeyboardButton("🔙 К товарам", callback_data=f"cat_{user_state.get('current_category', '')}")]
-            ])
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
+    except Exception as e:
+        # If trying to edit photo caption with text only or vice versa
+        await query.message.reply_text(
+            text,
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+async def show_positions_for_product_and_district(update: Update, context: ContextTypes.DEFAULT_TYPE, product_id, district_id):
+    """Показать позиции товара в конкретном районе"""
+    query = update.callback_query
+    await query.answer()
+    
+    product = await api.get_product_by_id(product_id)
+    # Fetch positions for specific district
+    positions = await api.get_positions_by_product(
+        product_id, 
+        None, # city_id is implied by district usually, or passed? API supports just districtId?
+        # BotAPI get_positions_by_product takes city_id, district_id.
+        district_id=district_id
+    )
+    
+    # Filter by district manually if needed, but API should handle it if passed.
+    # Note: get_positions_by_product implementation:
+    # if district_id: params['districtId'] = district_id
     
     keyboard = []
     for position in positions:
-        keyboard.append([InlineKeyboardButton(
-            f"💰 {position['price']} $ - {position['name']} - {position['location']}", 
+         keyboard.append([InlineKeyboardButton(
+            f"💰 {position['price']} $ - {position['name']}", 
             callback_data=f"pos_{position['id']}"
         )])
     
-    location_button_text = await get_location_button_text(user_state)
+    keyboard.append([InlineKeyboardButton("🔙 К выбору района", callback_data=f"prod_{product_id}")])
     
-    keyboard.append([
-        InlineKeyboardButton("🔙 К товарам", callback_data=f"cat_{user_state.get('current_category', '')}"),
-        InlineKeyboardButton(location_button_text, callback_data=f"loc_prod_{product_id}")
-    ])
-    
-    await query.message.reply_text(
-        "📍 <b>Доступные позиции:</b>",
+    await query.edit_message_text(
+        f"<b>📦 {product['name']}</b>\n\n"
+        f"📍 <b>Район выбран.</b> Выберите позицию:",
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -1208,8 +1255,7 @@ async def show_district_selection(update: Update, context: ContextTypes.DEFAULT_
         
         await query.edit_message_text(
             f"📍 <b>Город выбран!</b>\n\n"
-            f"🏙️ {city['name']}\n\n"
-            f"Теперь товары будут фильтроваться по вашему городу.",
+            f"🏙️ {city['name']}\n\n",
             parse_mode='HTML'
         )
         
@@ -1221,23 +1267,29 @@ async def show_district_selection(update: Update, context: ContextTypes.DEFAULT_
         )
         return
     
-    keyboard = []
-    keyboard.append([InlineKeyboardButton("Сбросить выбор района", callback_data=f"reset_district_{city_id}")])
-    
-    for district in city['districts']:
-        keyboard.append([InlineKeyboardButton(
-            f"📍 {district['name']}", 
-            callback_data=f"district_{city_id}_{district['id']}"
-        )])
-    
-    keyboard.append([InlineKeyboardButton("🔙 К выбору города", callback_data="back_to_cities")])
+    # NEW FLOW: Save city and show menu immediately. District selection happens inside product.
+    user_id = query.from_user.id
+    user_states[user_id]['city_id'] = int(city_id)
+    user_states[user_id]['district_id'] = None
     
     await query.edit_message_text(
-        f"📍 <b>Выбор района</b>\n\n"
-        f"Город: <b>{city['name']}</b>\n",
-        parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        f"📍 <b>Город выбран!</b>\n\n"
+        f"🏙️ {city['name']}\n\n",
+        parse_mode='HTML'
     )
+    
+    await query.message.reply_text(
+        "🏠 <b>Главное меню активировано</b>",
+        parse_mode='HTML',
+        reply_markup=MAIN_MENU
+    )
+    return
+
+    # OLD LOGIC commented out or removed
+    # keyboard = []
+    # keyboard.append([InlineKeyboardButton("Сбросить выбор района", callback_data=f"reset_district_{city_id}")])
+    # ...
+
 
 async def reset_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сбросить локацию пользователя"""
@@ -1512,6 +1564,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_states[user_id]['city_id'] = int(city_id)
         user_states[user_id]['district_id'] = int(district_id)
         await show_products(update, context, category_id)
+    elif data.startswith("prod_dist_"):
+        # prod_dist_{product_id}_{district_id}
+        parts = data.split("_")
+        product_id = parts[2]
+        district_id = parts[3]
+        await show_positions_for_product_and_district(update, context, product_id, district_id)
 
 async def show_categories_from_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показать категории из callback"""
