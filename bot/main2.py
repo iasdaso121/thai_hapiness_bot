@@ -654,14 +654,19 @@ async def prompt_custom_topup(update: Update, asset: str):
 
     message = (
         f"Введите сумму пополнения в {asset}.\n"
-        f"Пример: 12.5\n"
-        f"Для отмены отправьте «Отмена»."
+        f"Пример: 12.5"
     )
+    
+    keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_topup")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     if update.message:
-        await update.message.reply_text(message, reply_markup=MAIN_MENU)
+        await update.message.reply_text(message, reply_markup=reply_markup)
     else:
-        await update.callback_query.message.reply_text(message, reply_markup=MAIN_MENU)
+        # Also need to answer callback if it exists to stop loading animation
+        if update.callback_query:
+            await update.callback_query.answer()
+        await update.callback_query.message.reply_text(message, reply_markup=reply_markup)
 
 
 async def check_invoice_status(update: Update, invoice_id: str):
@@ -1520,6 +1525,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, asset, amount = data.split("_")
         await create_topup_invoice(update, asset, float(amount))
     elif data.startswith("check_pending_"):
+        await show_balance_menu(update, context)
+    elif data == "cancel_topup":
+        user_id = query.from_user.id
+        user_states[user_id]['awaiting_topup'] = None
+        await query.edit_message_text(
+            "❌ <b>Пополнение отменено</b>",
+            parse_mode='HTML'
+        )
+        # Optionally bring them back to balance or menu
         await show_balance_menu(update, context)
     elif data.startswith("check_"):
         invoice_id = data.split("_")[1]
