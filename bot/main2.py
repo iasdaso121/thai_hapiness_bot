@@ -1233,8 +1233,8 @@ async def show_city_selection(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
 
-async def show_district_selection(update: Update, context: ContextTypes.DEFAULT_TYPE, city_id):
-    """Показать выбор района"""
+async def handle_city_selected(update: Update, context: ContextTypes.DEFAULT_TYPE, city_id):
+    """Обработать выбор города (сохранить и показать меню)"""
     query = update.callback_query
     await query.answer()
     
@@ -1248,47 +1248,24 @@ async def show_district_selection(update: Update, context: ContextTypes.DEFAULT_
         )
         return
     
-    if not city.get('districts'):
-        user_id = query.from_user.id
-        user_states[user_id]['city_id'] = city_id
-        user_states[user_id]['district_id'] = None
-        
-        await query.edit_message_text(
-            f"📍 <b>Город выбран!</b>\n\n"
-            f"🏙️ {city['name']}\n\n",
-            parse_mode='HTML'
-        )
-        
-        # Restore Main Menu
-        await query.message.reply_text(
-            "🏠 <b>Главное меню активировано</b>",
-            parse_mode='HTML',
-            reply_markup=MAIN_MENU
-        )
-        return
-    
-    # NEW FLOW: Save city and show menu immediately. District selection happens inside product.
     user_id = query.from_user.id
     user_states[user_id]['city_id'] = int(city_id)
     user_states[user_id]['district_id'] = None
     
+    # Show confirmation
     await query.edit_message_text(
         f"📍 <b>Город выбран!</b>\n\n"
         f"🏙️ {city['name']}\n\n",
         parse_mode='HTML'
     )
     
+    # Activate Main Menu
     await query.message.reply_text(
         "🏠 <b>Главное меню активировано</b>",
         parse_mode='HTML',
         reply_markup=MAIN_MENU
     )
     return
-
-    # OLD LOGIC commented out or removed
-    # keyboard = []
-    # keyboard.append([InlineKeyboardButton("Сбросить выбор района", callback_data=f"reset_district_{city_id}")])
-    # ...
 
 
 async def reset_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1526,7 +1503,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await check_invoice_status(update, invoice_id)
     elif data.startswith("city_"):
         city_id = data.split("_")[1]
-        await show_district_selection(update, context, city_id)
+        await handle_city_selected(update, context, city_id)
     elif data.startswith("district_"):
         _, city_id, district_id = data.split("_")
         await save_location(update, context, city_id, district_id)
