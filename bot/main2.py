@@ -333,7 +333,7 @@ crypto_bot = CryptoBotAPI(CRYPTO_BOT_TOKEN)
 MAIN_MENU = ReplyKeyboardMarkup([
     [KeyboardButton("👤 Профиль"), KeyboardButton("Каталог")],
     [KeyboardButton("📦 Заказы"), KeyboardButton("ℹ️ О нас"), KeyboardButton("❓ Помощь")],
-    [KeyboardButton("💳 Баланс"), KeyboardButton("⭐ Отзывы")]
+    [KeyboardButton("⭐ Отзывы")]
 ], resize_keyboard=True)
 
 # Состояния пользователей
@@ -493,8 +493,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_about_menu(update, context)
     elif text == "❓ Помощь":
         await show_help_menu(update, context)
-    elif text == "💳 Баланс":
-        await show_balance_menu(update, context)
+
     elif text == "⭐ Отзывы":
         await show_reviews_menu(update, context)
 
@@ -565,6 +564,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     keyboard = [
+        [InlineKeyboardButton("💳 Пополнить баланс", callback_data="balance_menu")],
         [InlineKeyboardButton(location_info, callback_data="loc_profile")]
     ]
 
