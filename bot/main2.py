@@ -331,7 +331,7 @@ class CryptoBotAPI:
 crypto_bot = CryptoBotAPI(CRYPTO_BOT_TOKEN)
 
 MAIN_MENU = ReplyKeyboardMarkup([
-    [KeyboardButton("👤 Профиль"), KeyboardButton("Каталог"), KeyboardButton("🏙️ Город")],
+    [KeyboardButton("👤 Профиль"), KeyboardButton("Каталог")],
     [KeyboardButton("📦 Заказы"), KeyboardButton("ℹ️ О нас"), KeyboardButton("❓ Помощь")],
     [KeyboardButton("💳 Баланс"), KeyboardButton("⭐ Отзывы")]
 ], resize_keyboard=True)
@@ -557,17 +557,21 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     profile_text = (
         f"👤 <b>Профиль</b>\n\n"
-        f"🆔 ID: {user_id}\n"
+
         f"📛 Ник: @{username}\n"
         f"Завершенных покупок: <b>{purchases_count}</b>\n\n"
         f"Баланс: <b>{format_amount(wallet['balance'])} {CRYPTO_PAYMENT_ASSET}</b>\n"
         f"Ваш город - {location_info}"
     )
     
+    keyboard = [
+        [InlineKeyboardButton(location_info, callback_data="loc_profile")]
+    ]
+
     await update.message.reply_text(
         profile_text,
         parse_mode='HTML',
-        reply_markup=MAIN_MENU
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
@@ -1577,6 +1581,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if parts[1] == "cat":
             await show_city_selection(update, context)
         elif parts[1] == "prod":
+            await show_city_selection(update, context)
+        elif parts[1] == "profile":
             await show_city_selection(update, context)
     elif data == "back_to_categories":
         await show_categories_from_callback(update, context)
