@@ -331,7 +331,7 @@ class CryptoBotAPI:
 crypto_bot = CryptoBotAPI(CRYPTO_BOT_TOKEN)
 
 MAIN_MENU = ReplyKeyboardMarkup([
-    [KeyboardButton("👤 Профиль"), KeyboardButton("Каталог")],
+    [KeyboardButton("👤 Профиль"), KeyboardButton("🛒 Каталог")],
     [KeyboardButton("📦 Заказы"), KeyboardButton("ℹ️ О нас"), KeyboardButton("❓ Помощь")],
     [KeyboardButton("⭐ Отзывы")]
 ], resize_keyboard=True)
