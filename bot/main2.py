@@ -481,7 +481,7 @@ async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await create_topup_invoice(update, awaiting_topup.get('asset', CRYPTO_PAYMENT_ASSET), amount)
         return
     
-    if text == "Каталог":
+    if text == "🛒 Каталог":
         await show_categories(update, context)
     elif text == "🏙️ Город":
         await show_city_selection_menu(update, context)
